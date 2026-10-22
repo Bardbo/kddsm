@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="brand">
+    <div class="brand-avatar"><img id="brand-dog" alt="陪伴犬"></div>
+    <div class="brand-text">
+      <h1>啃读点书吗？</h1>
+      <p class="tagline">重点浮现 · 跟读不走神</p>
+    </div>
+    <span class="ver-chip" id="ver"></span>
+  </header>
+
+  <section class="panel">
+    <button id="toggle" class="switch">开启高亮</button>
+    <div class="state-row">
+      <span class="state-line"><i id="state-dot" class="dot off"></i><span id="page-state">本页未启用</span></span>
+      <span class="coins" title="狗狗币">🦴 <b id="coin-balance">--</b></span>
+    </div>
+    <div class="sign-row">
+      <button id="sign-btn" class="sign">签到领 🦴5</button>
+      <span id="sign-state"></span>
+    </div>
+    <label class="auto-row"><input type="checkbox" id="kd-auto" checked><span>打开网页自动高亮</span></label>
+  </section>
+
+  <section class="panel">
+    <div class="seg" role="group">
+      <button class="seg-btn active" data-mode="hl">高亮模式</button>
+      <button class="seg-btn" data-mode="pace">跟读模式</button>
+    </div>
+    <div id="speed-wrap" class="hidden">
+      <div class="speed-row"><span>速度</span><b id="wpm-val">300</b><span>字/分</span></div>
+      <input type="range" id="speed" min="120" max="3000" step="10" value="300">
+    </div>
+    <div id="pace-controls" class="pace-controls hidden">
+      <button id="pace-btn" class="mini-btn primary">开始跟读</button>
+      <button id="restart-btn" class="mini-btn">重读</button>
+      <span id="pace-text">—</span>
+    </div>
+    <div id="pace-bar" class="pace-bar hidden"><i id="pace-fill"></i></div>
+  </section>
+
+  <section class="panel">
+    <h2>高亮颜色</h2>
+    <div class="color-row">
+      <span class="chip kd-t1" id="chip-grad"></span>
+      <input type="color" id="c-t1" value="#FFB800" aria-label="高亮颜色">
+      <input type="number" id="a-t1" min="0" max="1" step="0.05" value="0.85" aria-label="透明度">
+      <span class="unit">透明度</span>
+      <button id="color-reset" class="mini-btn">恢复默认</button>
+    </div>
+    <label class="auto-row"><input type="checkbox" id="kd-eaten"><span>跟读时完全隐藏已读文字（默认淡出保留）</span></label>
+  </section>
+
+  <details class="panel fold">
+    <summary>AI 校准<span class="fold-state" id="llm-fold-state"></span></summary>
+    <label class="fold-switch"><input type="checkbox" id="llm-enable" checked> 开启 AI 校准（让模型帮你挑重点）</label>
+    <div class="cfg-row"><span>状态</span><b id="llm-status" class="llm-st">—</b></div>
+    <div class="cfg-row"><span>接口地址</span><input type="text" id="llm-url" value="https://index-translate.bilibili.com/v1"></div>
+    <div class="cfg-row"><span>模型名</span><input type="text" id="llm-model" value="Index-Translate-35B-A3B"></div>
+    <div class="cfg-row"><span>Key</span><input type="text" id="llm-key" placeholder="留空 = 无需 Key" autocomplete="off" spellcheck="false"></div>
+    <label class="auto-row"><input type="checkbox" id="llm-safe" checked><span>隐私保护：本地文件 / 内网 / 含密码框的页面不上传</span></label>
+    <p class="hint" id="llm-hint">首次校准会把本页正文前 6000 字发给上面这个接口（同一页面只发一次，之后走本地缓存）。</p>
+    <button id="llm-now" class="mini-btn">立即校准当前页</button>
+  </details>
+
+  <section class="panel dogs">
+    <h2 id="dog-shop-title"><span id="dog-shop-label">狗舍</span> <span class="count" id="dog-count"></span></h2>
+    <p id="dog-shop-hint" class="hint"></p>
+    <div id="dog-list"></div>
+  </section>
+
+  <footer>阅读 1 分钟 = 1 🦴 · 签到 +5 🦴 · 100 🦴 解锁一只 · Alt+Z 开关</footer>
+<script src="popup.js"></script>
+</body>
+</html>

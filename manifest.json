@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "啃读点书吗？",
+  "version": "1.0.0",
+  "description": "中文阅读重点标注 + 跟读节奏模式，帮 ADHD 人群专注阅读。斑点狗陪读，阅读时长换狗狗币解锁新品种。",
+  "permissions": ["activeTab", "storage", "declarativeNetRequest"],
+  "declarative_net_request": {
+    "rule_resources": [
+      { "id": "strip_origin", "enabled": true, "path": "rules.json" }
+    ]
+  },
+  "host_permissions": ["https://index-translate.bilibili.com/*"],
+  "background": { "service_worker": "background.js" },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "啃读点书吗？"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*", "file:///*"],
+      "js": ["content/kendudian.js"],
+      "css": ["content/kendudian.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["dict/dict.json", "dict/names.json", "icons/dogs/*", "worker/score-worker.js", "worker/vendor/*", "assets/model/*", "assets/dogs-ai/thumbs/*"],
+      "matches": ["http://*/*", "https://*/*", "file:///*"]
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

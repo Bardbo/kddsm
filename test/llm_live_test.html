@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>啃读点书吗 · AI 校准真机验证（连真实接口）</title>
+<style>
+  body { max-width: 700px; margin: 24px auto; font-family: "Noto Serif SC", serif; line-height: 1.9; padding: 0 16px; }
+  #results { white-space: pre-wrap; font-family: Consolas, monospace; border: 2px solid #09c; background: #f5fbff; padding: 10px; margin-top: 16px; font-size: 12px; }
+  .fail { color: #b00; font-weight: 700; }
+</style>
+<link rel="stylesheet" href="../content/kendudian.css">
+</head>
+<body>
+<h1>AI 校准真机验证</h1>
+<p>这一页会真的把正文发给 <code>index-translate.bilibili.com</code>，只用来人工核对"模型标的重点合不合理"。</p>
+<article id="article">
+  <h1>威尼斯（节选片段）</h1>
+  <p>威尼斯不单是明媚，在圣马克方场走走就知道。这两溜儿楼房的下一层，现在满开了铺子。运河去的是公爷；圣马克堂是广场的主人，建筑在十一世纪，原是卑赞廷式，以直线为主。十四世纪加上戈普式的装饰，如尖拱门等；十七世纪又参入文艺复兴期的装饰，如栏杆等。所以庄严华妙，兼而有之，这正是威尼斯人的漂亮劲儿。</p>
+  <p>教堂里屋顶与墙壁上满是碎玻璃嵌成的画，大概是真金色的地，蓝色和红色的圣灵像。这些像做得非常肃穆。教堂的地是用大理石铺的，颜色花样种种不同。在那种空阔阴暗的氛围中，你觉得伟丽，也觉得森严。教堂左右那两溜儿楼房，式样各别，并不对称；钟楼高三百二十二英尺，也偏在一面。</p>
+  <p>从圣马克方场沿河直向东去，有一处公园，从一五六五年起，就修好了。那里还没有好几条曲径，我们坐在路旁的椅子上谈天；或者是阿喀琉斯雕像只露出一个头，或者是夜灯摇曳着一片片绿影，都叫人不觉得时光的飞逝。威尼斯的夜曲是很著名的。夜曲本是一种抒情的曲子，夜晚在人家窗下随便唱。</p>
+</article>
+
+<script>
+const STORE = {
+  kdAuto: false,
+  kdPrefs: { speedCps: 8 },
+  kdLlmCfg: { enabled: true, baseUrl: 'https://index-translate.bilibili.com/v1', model: 'Index-Translate-35B-A3B', apiKey: '', skipSensitive: false },
+  kdLlmCache: {},
+  kdCoins: { total: 0, daily: 0, date: '', activeSec: 0, lastSignDate: '' },
+};
+window.__llmCalls = [];
+const realFetch = window.fetch.bind(window);
+window.fetch = async (url, opts) => {
+  if (String(url).indexOf('index-translate') >= 0) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (opts && opts.headers && opts.headers.Authorization) headers.Authorization = opts.headers.Authorization;
+    try {
+      const res = await realFetch(url, { method: 'POST', headers, body: opts && opts.body });
+      const text = await res.text();
+      window.__llmCalls.push({ ch: '直连', ok: res.ok, status: res.status, text, body: opts && opts.body ? JSON.parse(opts.body) : null });
+      return { ok: res.ok, status: res.status, text: async () => text };
+    } catch (e) {
+      window.__llmCalls.push({ ch: '直连', ok: false, status: 0, text: String(e) });
+      throw e;
+    }
+  }
+  return realFetch(url, opts);
+};
+window.chrome = {
+  runtime: {
+    onMessage: { addListener() {} },
+    getURL: (p) => '../' + p,
+    // 复刻 background.js 的代理行为（第二条通道）
+    sendMessage: async (msg) => {
+      if (msg.type !== 'kd-llm') return { ok: false, error: 'unexpected ' + msg.type };
+      const headers = { 'Content-Type': 'application/json' };
+      if (msg.key) headers.Authorization = 'Bearer ' + msg.key;
+      try {
+        const res = await realFetch(msg.url, { method: 'POST', headers, body: JSON.stringify(msg.body) });
+        const text = await res.text();
+        window.__llmCalls.push({ ch: '后台代理', ok: res.ok, status: res.status, text, body: msg.body });
+        return { ok: res.ok, status: res.status, text };
+      } catch (e) {
+        window.__llmCalls.push({ ch: '后台代理', ok: false, status: 0, text: String(e) });
+        return { ok: false, error: String(e) };
+      }
+    },
+  },
+  storage: {
+    local: {
+      async get(keys) {
+        const out = {};
+        for (const k of (Array.isArray(keys) ? keys : [keys])) if (k in STORE) out[k] = STORE[k];
+        return out;
+      },
+      async set(obj) { Object.assign(STORE, obj); },
+    },
+  },
+  tabs: { query: async () => [{ id: 1 }], sendMessage: async () => ({}) },
+};
+window.Worker = function () { throw new Error('worker blocked（本页只看 AI 校准，不跑 BERT）'); };
+</script>
+<script src="../content/kendudian.js?v=2"></script>
+<script>
+(async () => {
+  const R = { pass: 0, fail: 0, notes: [] };
+  const ok = (n, c, x) => { c ? (R.pass++, R.notes.push('✓ ' + n)) : (R.fail++, R.notes.push('✗ ' + n + (x !== undefined ? ' → ' + JSON.stringify(x) : ''))); };
+  const show = () => { document.getElementById('results').innerHTML =
+    (R.fail ? '<span class="fail">' : '') + `pass=${R.pass} fail=${R.fail}\n` + R.notes.join('\n') + (R.fail ? '</span>' : ''); };
+  try {
+    const K = window.__KD, KD = K.KD;
+    await K.enable();
+    // 校准前的静态基线（只看本地打分选了哪些词）
+    const baseT1 = KD.tokens.filter(t => t.tier === 1).map(t => t.text);
+
+    const r = await K.llmCalibrate({ force: true });
+
+    // ---- 报告 ----
+    const calls = window.__llmCalls;
+    R.notes.push(`请求次数: ${calls.length}（通道: ${calls.map(c => c.ch).join(',')}）· 状态: ${KD.llmState} · ok=${r.ok}`);
+    if (KD.llmError) R.notes.push('llmError: ' + KD.llmError);
+    if (calls.length) {
+      const c0 = calls[0];
+      R.notes.push(`HTTP ${c0.status} · 输入 ${c0.body && c0.body.messages[0].content.length} 字`);
+      let raw = c0.text;
+      try {
+        const j = JSON.parse(raw);
+        raw = j.choices[0].message.content;
+      } catch (e) {}
+      R.notes.push('模型原始输出:\n' + String(raw).slice(0, 900));
+      // 复刻扩展的短语过滤，看看丢了多少
+      try {
+        const j2 = JSON.parse(String(raw).slice(String(raw).indexOf('{'), String(raw).lastIndexOf('}') + 1));
+        const arr = j2.important || [];
+        const kept = [], dropLen = [], dropNoCn = [], dropNotInText = [];
+        for (const s of arr) {
+          const v = String(s).trim().replace(/^[「『“”"'《]+|[」』“”"'》]+$/g, '');
+          if (v.length < 2 || v.length > 10) dropLen.push(v);
+          else if (!/[\u4e00-\u9fa5]/.test(v)) dropNoCn.push(v);
+          else if (KD.fullText.indexOf(v) < 0) dropNotInText.push(v);
+          else kept.push(v);
+        }
+        R.notes.push(`模型给 ${arr.length} 个 → 可用 ${kept.length} 个`);
+        R.notes.push('可用: ' + kept.join('、'));
+        if (dropLen.length) R.notes.push('超长丢弃: ' + dropLen.join('、'));
+        if (dropNoCn.length) R.notes.push('无中文丢弃: ' + dropNoCn.join('、'));
+        if (dropNotInText.length) R.notes.push('原文没有(模型编的): ' + dropNotInText.join('、'));
+        ok('模型输出里至少有 3 个可用中文短语', kept.length >= 3, kept.length);
+      } catch (e) { R.notes.push('解析模型输出失败: ' + e.message); }
+    }
+    if (KD.llmStats) R.notes.push(`命中: ${KD.llmStats.phrases} 个短语 / ${KD.llmStats.tokens} 个 token`);
+    R.notes.push('校准前 Tier1: ' + baseT1.join('、'));
+    R.notes.push('校准后 Tier1: ' + KD.tokens.filter(t => t.tier === 1).map(t => t.text).join('、'));
+    R.notes.push('AI 加成过的词: ' + KD.tokens.filter(t => t._llm).map(t => t.text).join('、'));
+    R.notes.push('\n（Tier1 用来核对"模型标的重点有没有真的顶上来"）');
+  } catch (e) {
+    R.fail++;
+    R.notes.push('ERROR: ' + e.message + '\n' + e.stack);
+  }
+  show();
+})();
+</script>
+<div id="results">running...</div>
+</body>
+</html>

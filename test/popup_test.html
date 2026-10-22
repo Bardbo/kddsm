@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="../popup/popup.css">
+</head>
+<body>
+  <header class="brand">
+    <div class="brand-avatar"><img id="brand-dog" alt="陪伴犬"></div>
+    <div class="brand-text">
+      <h1>啃读点书吗？</h1>
+      <p class="tagline">重点浮现 · 跟读不走神</p>
+    </div>
+    <span class="ver-chip" id="ver"></span>
+  </header>
+
+  <section class="panel">
+    <button id="toggle" class="switch">开启高亮</button>
+    <div class="state-row">
+      <span class="state-line"><i id="state-dot" class="dot off"></i><span id="page-state">本页未启用</span></span>
+      <span class="coins" title="狗狗币">🦴 <b id="coin-balance">--</b></span>
+    </div>
+    <div class="sign-row">
+      <button id="sign-btn" class="sign">签到领 🦴5</button>
+      <span id="sign-state"></span>
+    </div>
+    <label class="auto-row"><input type="checkbox" id="kd-auto" checked><span>打开网页自动高亮</span></label>
+  </section>
+
+  <section class="panel">
+    <div class="seg" role="group">
+      <button class="seg-btn active" data-mode="hl">高亮模式</button>
+      <button class="seg-btn" data-mode="pace">跟读模式</button>
+    </div>
+    <div id="speed-wrap" class="hidden">
+      <div class="speed-row"><span>速度</span><b id="wpm-val">300</b><span>字/分</span></div>
+      <input type="range" id="speed" min="120" max="3000" step="10" value="300">
+    </div>
+    <div id="pace-controls" class="pace-controls hidden">
+      <button id="pace-btn" class="mini-btn primary">开始跟读</button>
+      <button id="restart-btn" class="mini-btn">重读</button>
+      <span id="pace-text">—</span>
+    </div>
+    <div id="pace-bar" class="pace-bar hidden"><i id="pace-fill"></i></div>
+  </section>
+
+  <section class="panel">
+    <h2>高亮颜色</h2>
+    <div class="color-row">
+      <span class="chip kd-t1" id="chip-grad"></span>
+      <input type="color" id="c-t1" value="#FFB800" aria-label="高亮颜色">
+      <input type="number" id="a-t1" min="0" max="1" step="0.05" value="0.85" aria-label="透明度">
+      <span class="unit">透明度</span>
+      <button id="color-reset" class="mini-btn">恢复默认</button>
+    </div>
+    <label class="auto-row"><input type="checkbox" id="kd-eaten"><span>跟读时完全隐藏已读文字（默认淡出保留）</span></label>
+  </section>
+
+  <details class="panel fold">
+    <summary>AI 校准<span class="fold-state" id="llm-fold-state"></span></summary>
+    <label class="fold-switch"><input type="checkbox" id="llm-enable" checked> 开启 AI 校准（让模型帮你挑重点）</label>
+    <div class="cfg-row"><span>状态</span><b id="llm-status" class="llm-st">—</b></div>
+    <div class="cfg-row"><span>接口地址</span><input type="text" id="llm-url" value="https://index-translate.bilibili.com/v1"></div>
+    <div class="cfg-row"><span>模型名</span><input type="text" id="llm-model" value="Index-Translate-35B-A3B"></div>
+    <div class="cfg-row"><span>Key</span><input type="text" id="llm-key" placeholder="留空 = 无需 Key" autocomplete="off" spellcheck="false"></div>
+    <label class="auto-row"><input type="checkbox" id="llm-safe" checked><span>隐私保护：本地文件 / 内网 / 含密码框的页面不上传</span></label>
+    <p class="hint" id="llm-hint">首次校准会把本页正文前 6000 字发给上面这个接口（同一页面只发一次，之后走本地缓存）。</p>
+    <button id="llm-now" class="mini-btn">立即校准当前页</button>
+  </details>
+
+  <section class="panel dogs">
+    <h2 id="dog-shop-title"><span id="dog-shop-label">狗舍</span> <span class="count" id="dog-count"></span></h2>
+    <p id="dog-shop-hint" class="hint"></p>
+    <div id="dog-list"></div>
+  </section>
+
+  <footer>阅读 1 分钟 = 1 🦴 · 签到 +5 🦴 · 100 🦴 解锁一只 · Alt+Z 开关</footer>
+<div id="results" style="white-space:pre-wrap;font-family:Consolas,monospace;border:2px solid #09c;background:#f5fbff;padding:10px;margin:16px 0;font-size:12px;">running...</div>
+<script>
+// popup 预览页用的 chrome stub（popup.js 在 http 环境下也能跑起来看样式/交互）
+const WRITES = [];
+window.chrome = {
+  runtime: { getURL: (p) => '../' + p, getManifest: () => ({ version: '1.0.0' }), onMessage: { addListener() {} }, sendMessage: async () => ({ ok: true }) },
+  storage: { local: {
+    get: async () => ({}),
+    set: async (o) => { WRITES.push(o); },
+  } },
+  tabs: { query: async () => [{ id: 1 }], sendMessage: async () => ({ ok: true }) }
+};
+</script>
+<script src="../popup/popup.js"></script>
+<script>
+// ---------------- popup 回归用例 ----------------
+// 这里踩过两个真实事故，都靠下面的用例钉住：
+//   1) dog-shop-title.textContent = ... 把 <span id="dog-count"> 一起抹掉 → 下一行取到 null 抛错 → 狗舍整块空白
+//   2) 把 <input type=checkbox> 放进 <summary> 再用 preventDefault 阻止折叠 → 连勾选本身也被取消 → AI 校准开关点不动
+const R = { pass: 0, fail: 0, notes: [] };
+function ok(name, cond, extra) {
+  if (cond) { R.pass++; R.notes.push('✓ ' + name); }
+  else { R.fail++; R.notes.push('✗ ' + name + (extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); }
+}
+const wait = (ms) => new Promise(r => setTimeout(r, ms));
+function show() {
+  document.getElementById('results').innerHTML =
+    (R.fail ? '<span style="color:#b00;font-weight:700">' : '') +
+    `pass=${R.pass} fail=${R.fail}\n` + R.notes.join('\n') + (R.fail ? '</span>' : '');
+}
+
+(async () => {
+  try {
+    const t0 = Date.now();
+    while (Date.now() - t0 < 5000 && !document.querySelector('.dog-card')) await wait(100);
+    await wait(300);
+
+    // ---------- 1. 狗舍面板 ----------
+    const cards = [...document.querySelectorAll('.dog-card')];
+    ok('狗舍渲染出 15 张狗卡', cards.length === 15, cards.length);
+    ok('标题里的计数 span 没被抹掉', !!document.getElementById('dog-count') && !!document.getElementById('dog-shop-label'));
+    ok('狗卡名字齐全', cards.every(c => c.querySelector('.name') && c.querySelector('.name').textContent.trim()));
+    const imgs = [...document.querySelectorAll('.dog-card img')];
+    await wait(800);
+    ok('15 张肖像图都能加载', imgs.length === 15 && imgs.every(i => i.naturalWidth > 0), imgs.filter(i => !i.naturalWidth).map(i => i.getAttribute('src')));
+    ok('新装首次打开是"选一只初始狗狗"', document.getElementById('dog-shop-label').textContent === '选一只你的初始狗狗', document.getElementById('dog-shop-label').textContent);
+
+    // ---------- 1b. 体验权限默认关闭且不暴露在 UI 上 ----------
+    ok('UI 里不再有"体验模式"开关', !document.getElementById('kd-dev-all'));
+    ok('新装没有免费解锁的狗卡（除初始选择态）', document.querySelectorAll('.dog-card.locked').length === 0, document.querySelectorAll('.dog-card.locked').length);
+
+    // ---------- 2. AI 校准开关（旧实现点不动） ----------
+    const cb = document.getElementById('llm-enable');
+    const fold = cb.closest('details');
+    fold.open = true;
+    const killer = (e) => e.preventDefault();
+    cb.parentElement.addEventListener('click', killer);      // 复刻旧 bug 的拦截方式
+    const before0 = cb.checked;
+    cb.click();
+    ok('自证：祖先 preventDefault 确实会吃掉勾选（旧 bug 能被本用例抓到）', cb.checked === before0, { before0, after: cb.checked });
+    cb.parentElement.removeEventListener('click', killer);
+
+    const before = cb.checked;
+    cb.click();
+    ok('AI 校准开关能切换', cb.checked === !before, { before, after: cb.checked });
+    cb.click();
+    ok('AI 校准开关能再切回', cb.checked === before);
+    ok('切开关不会折叠面板', fold.open === true, fold.open);
+    ok('折叠标题上显示开关状态', /[开关]/.test(document.getElementById('llm-fold-state').textContent), document.getElementById('llm-fold-state').textContent);
+
+    // ---------- 3. 选初始狗 ----------
+    cards[0].click();
+    await wait(300);
+    ok('点狗卡完成初始选择', document.getElementById('dog-shop-label').textContent === '狗舍', document.getElementById('dog-shop-label').textContent);
+    ok('选完狗舍仍是 15 张卡（没被清空）', document.querySelectorAll('.dog-card').length === 15, document.querySelectorAll('.dog-card').length);
+    ok('选中的狗高亮', !!document.querySelector('.dog-card.selected'));
+    ok('初始选择只得到 1 只（不再默认全开）', document.getElementById('dog-count').textContent === '1/15', document.getElementById('dog-count').textContent);
+    ok('其余 14 只处于上锁状态', document.querySelectorAll('.dog-card.locked').length === 14, document.querySelectorAll('.dog-card.locked').length);
+
+    // ---------- 4. 每隔 1.5s 的状态轮询不会再把面板搞坏 ----------
+    await wait(2000);
+    ok('轮询 2 秒后狗舍还在', document.querySelectorAll('.dog-card').length === 15, document.querySelectorAll('.dog-card').length);
+    ok('轮询后开关状态还在', document.getElementById('llm-enable').checked === before);
+    ok('版本号能读到（用来确认跑的是新代码）', /^v\d+\.\d+/.test(document.getElementById('ver').textContent), document.getElementById('ver').textContent);
+
+    // ---------- 4b. 口令彩蛋：在 Key 里输入「体验全开」 ----------
+    const keyEl = document.getElementById('llm-key');
+    const writesBefore = WRITES.length;
+    keyEl.value = '体验全开';
+    keyEl.dispatchEvent(new Event('change', { bubbles: true }));
+    await wait(400);
+    ok('口令解锁后全部品种可用', document.getElementById('dog-count').textContent === '15/15', document.getElementById('dog-count').textContent);
+    ok('口令解锁后没有上锁的狗卡', document.querySelectorAll('.dog-card.locked').length === 0, document.querySelectorAll('.dog-card.locked').length);
+    ok('口令不会被当成 API Key 存下来', keyEl.value === '', keyEl.value);
+    const wroteKey = WRITES.slice(writesBefore).some(o => o.kdLlmCfg && String(o.kdLlmCfg.apiKey || '').indexOf('体验全开') >= 0);
+    ok('口令不会写进 kdLlmCfg.apiKey', !wroteKey);
+    ok('口令只写入独立的体验开关 kdTrial', WRITES.slice(writesBefore).some(o => o.kdTrial && o.kdTrial.unlocked === true));
+
+    // ---------- 5. 拿不到活动标签页 / 页面不可注入时不能崩 ----------
+    // 旧实现：const [tab] = await chrome.tabs.query(...) → tab 是 undefined → tab.id → TypeError
+    const errs = [];
+    const origErr = console.error;
+    console.error = (...a) => { errs.push(a.map(x => (x && x.message) || String(x)).join(' ')); origErr.apply(console, a); };
+    const realQuery = chrome.tabs.query, realSend = chrome.tabs.sendMessage;
+    chrome.tabs.query = async () => [];                       // 没有活动页
+    chrome.tabs.sendMessage = async () => { throw new Error('Could not establish connection'); };
+    document.getElementById('toggle').click();
+    document.getElementById('llm-now').click();
+    document.getElementById('pace-btn').click();
+    await wait(600);
+    console.error = origErr;
+    chrome.tabs.query = realQuery; chrome.tabs.sendMessage = realSend;
+    ok('没有活动标签页时不抛异常（不再出现 tab.id 的 TypeError）', errs.length === 0, errs);
+    ok('此时面板给出人话提示而不是空白', /无法注入|不支持|失败/.test(document.getElementById('page-state').textContent), document.getElementById('page-state').textContent);
+    ok('狗舍面板仍然完好', document.querySelectorAll('.dog-card').length === 15, document.querySelectorAll('.dog-card').length);
+
+    show();
+  } catch (e) {
+    R.fail++;
+    R.notes.push('ERROR: ' + e.message + '\n' + e.stack);
+    show();
+  }
+})();
+</script>
+</body>
+</html>

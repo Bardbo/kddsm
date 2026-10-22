@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>啃读点书吗 v0.9 回归测试（跟读 / AI 校准）</title>
+<style>
+  body { max-width: 700px; margin: 24px auto; font-family: "Noto Serif SC", serif; line-height: 1.9; padding: 0 16px; }
+  #results { white-space: pre-wrap; font-family: Consolas, monospace; border: 2px solid #09c; background: #f5fbff; padding: 10px; margin-top: 16px; }
+  .fail { color: #b00; font-weight: 700; }
+</style>
+<link rel="stylesheet" href="../content/kendudian.css">
+</head>
+<body>
+<h1>跟读与 AI 校准回归</h1>
+<article id="article">
+  <h1>威尼斯（节选片段）</h1>
+  <p>威尼斯不单是明媚，在圣马克方场走走就知道。这两溜儿楼房的下一层，现在满开了铺子。运河去的是公爷；圣马克堂是广场的主人，建筑在十一世纪，原是卑赞廷式，以直线为主。十四世纪加上戈普式的装饰，如尖拱门等；十七世纪又参入文艺复兴期的装饰，如栏杆等。所以庄严华妙，兼而有之，这正是威尼斯人的漂亮劲儿。</p>
+  <p>教堂里屋顶与墙壁上满是碎玻璃嵌成的画，大概是真金色的地，蓝色和红色的圣灵像。这些像做得非常肃穆。教堂的地是用大理石铺的，颜色花样种种不同。在那种空阔阴暗的氛围中，你觉得伟丽，也觉得森严。教堂左右那两溜儿楼房，式样各别，并不对称；钟楼高三百二十二英尺，也偏在一面。</p>
+  <div style="display:none">这段隐藏文字不应该进入跟读队列甲甲甲甲甲甲甲甲</div>
+  <div hidden>这个隐藏区块也不应该进入跟读队列乙乙乙乙乙乙乙乙</div>
+  <p>从圣马克方场沿河直向东去，有一处公园，从一五六五年起，就修好了。威尼斯的夜曲是很著名的。夜曲本是一种抒情的曲子，夜晚在人家窗下随便唱。</p>
+  <p id="long"></p>
+</article>
+
+<script>
+// --- chrome API stub ---
+const STORE = {
+  kdAuto: false,                                  // 测试里手动 enable，避免和自动开启抢时序
+  kdPrefs: { speedCps: 8 },                       // 用于验证"新页面沿用上次速度"
+  kdLlmCfg: { enabled: true, baseUrl: 'https://index-translate.bilibili.com/v1', model: 'Index-Translate-35B-A3B', apiKey: '', skipSensitive: false },
+  kdLlmCache: {},
+  kdCoins: { total: 0, daily: 0, date: '', activeSec: 0, lastSignDate: '' },
+};
+let msgListener = null;
+let llmReply = null;                               // (msg) => Promise<resp>  —— 模拟后台 SW 代理
+let llmDirectMode = 'ok';                          // 'ok' | 'net' | '412'  —— 模拟页面直连通道
+const LLMCALL = { fetch: 0, sw: 0 };
+const realFetch = window.fetch.bind(window);
+// 扩展现在有两条路（页面直连 / 后台代理），两条都得能测，所以 fetch 也要可控
+window.fetch = async (url, opts) => {
+  if (String(url).indexOf('index-translate') >= 0) {
+    LLMCALL.fetch++;
+    if (llmDirectMode === 'net') throw new TypeError('Failed to fetch');
+    if (llmDirectMode === '412') return { ok: false, status: 412, text: async () => 'Precondition Failed' };
+    const r = await llmReply({ url: String(url), body: opts && opts.body ? JSON.parse(opts.body) : null });
+    return { ok: r.ok, status: r.status || 200, text: async () => r.text };
+  }
+  return realFetch(url, opts);
+};
+window.chrome = {
+  runtime: {
+    onMessage: { addListener(fn) { msgListener = fn; } },
+    getURL: (p) => '../' + p,
+    sendMessage: (msg) => {
+      if (msg.type === 'kd-llm') {
+        LLMCALL.sw++;
+        return llmReply ? llmReply(msg) : Promise.resolve({ ok: true, text: '{"important":["威尼斯"]}' });
+      }
+      return Promise.resolve({ ok: true });
+    },
+  },
+  storage: {
+    local: {
+      async get(keys) {
+        if (keys == null) return { ...STORE };
+        const out = {};
+        for (const k of (Array.isArray(keys) ? keys : [keys])) if (k in STORE) out[k] = STORE[k];
+        return out;
+      },
+      async set(obj) { Object.assign(STORE, obj); },
+    },
+  },
+};
+// 禁用 Worker：本页只验证跟读/AI 链路，避免 11MB 模型把时序搅乱
+window.Worker = function () { throw new Error('worker blocked in test'); };
+</script>
+<script src="../content/kendudian.js"></script>
+<script>
+// 一段够长的正文（性能回归用）
+document.getElementById('long').textContent =
+  '阅读是注意力的长跑，重点标注把长跑拆成一段一段可以落脚的地方。'.repeat(60);
+
+const wait = (ms) => new Promise(r => setTimeout(r, ms));
+const R = { pass: 0, fail: 0, notes: [] };
+function ok(name, cond, extra) {
+  if (cond) { R.pass++; R.notes.push('✓ ' + name); }
+  else { R.fail++; R.notes.push('✗ ' + name + (extra !== undefined ? ' → ' + JSON.stringify(extra) : '')); }
+}
+function show() {
+  document.getElementById('results').innerHTML =
+    (R.fail ? '<span class="fail">' : '') + `pass=${R.pass} fail=${R.fail}\n` + R.notes.join('\n') + (R.fail ? '</span>' : '');
+}
+
+(async () => {
+  try {
+    await window.__KD.dictReady;
+    const K = window.__KD, KD = K.KD;
+    await K.enable();
+    await wait(80);
+
+    // ---------- 1. 可见性过滤 ----------
+    ok('隐藏节点不进 fullText', !KD.fullText.includes('隐藏文字') && !KD.fullText.includes('乙乙'), KD.fullText.slice(0, 40));
+    ok('正常正文仍在', KD.fullText.includes('威尼斯'));
+
+    // ---------- 2. 速度持久化 ----------
+    ok('速度沿用 kdPrefs', KD.cfg.speedCps === 8, KD.cfg.speedCps);
+
+    // ---------- 3. 跟读标记（前进 / 回看） ----------
+    K.startPace();
+    await wait(60);
+    ok('startPace 后进入跟读', KD.state.pace === true);
+
+    KD.paceCharPos = KD.tokens[10].start; K.tickPace();
+    const eatenEarly = KD.tokens.slice(0, 10).filter(t => !t.tier && K.KD.tokenSpans[KD.tokens.indexOf(t)][0].classList.contains('kd-eaten')).length;
+    const nonTierEarly = KD.tokens.slice(0, 10).filter(t => !t.tier).length;
+    ok('前向：跨过的非高亮词淡出', nonTierEarly === 0 || eatenEarly === nonTierEarly, { eatenEarly, nonTierEarly });
+    ok('前向：高亮词不被吃掉', KD.tokens.slice(0, 10).filter(t => t.tier).every(t => !K.KD.tokenSpans[KD.tokens.indexOf(t)][0].classList.contains('kd-eaten')));
+
+    KD.paceCharPos = KD.tokens[2].start; K.tickPace();
+    ok('回看：跨回去的词还原', KD.tokens.slice(2, 10).filter(t => !t.tier).every(t => !K.KD.tokenSpans[KD.tokens.indexOf(t)][0].classList.contains('kd-eaten')));
+    ok('当前词高亮环唯一', document.querySelectorAll('.kd-cur').length === 1);
+
+    // ---------- 4. 暂停保留进度 + 已读还原 ----------
+    KD.paceCharPos = KD.tokens[20].start; K.tickPace();
+    const posBeforeStop = KD.paceCharPos;
+    K.stopPace();
+    ok('暂停后水位保留', KD.paceCharPos === posBeforeStop && KD.state.pace === false);
+    ok('暂停后已读文字全部还原', document.querySelectorAll('.kd-eaten').length === 0);
+    K.startPace(); await wait(60);
+    ok('继续后从暂停处续读', Math.abs(KD.paceCharPos - posBeforeStop) < 5, { now: KD.paceCharPos, posBeforeStop });
+
+    // ---------- 5. 读完 → 提示条 + 重读 ----------
+    KD.paceCharPos = KD.fullText.length + 1; K.tickPace();
+    ok('读完态', KD.state.finished === true && KD.state.pace === false);
+    ok('读完有页内提示（不是一片空白）', !!document.querySelector('.kd-toast'));
+    ok('读完保留已读状态', document.querySelectorAll('.kd-eaten').length > 0);
+    K.restartPace(); await wait(60);
+    ok('重读回到开头', KD.state.pace === true && KD.paceCharPos < 30, KD.paceCharPos);
+    ok('重读清掉提示条', !document.querySelector('.kd-toast'));
+
+    // ---------- 5b. 读完补齐尾巴 / 重读无残留 / 切后台保留已读 ----------
+    KD.paceCharPos = KD.fullText.length + 1; K.tickPace();
+    const nonTierAll = KD.tokens.filter(t => !t.tier).length;
+    const eatenAll = document.querySelectorAll('.kd-eaten').length;
+    ok('读完时尾巴也淡出（大步长跳过结尾不留白）', eatenAll >= nonTierAll, { eatenAll, nonTierAll });
+
+    K.restartPace();
+    ok('重读后旧已读全部还原（无残留）', document.querySelectorAll('.kd-eaten').length === 0, document.querySelectorAll('.kd-eaten').length);
+    await wait(60);
+
+    KD.paceCharPos = KD.tokens[20].start; K.tickPace();
+    const eatenBeforeHide = document.querySelectorAll('.kd-eaten').length;
+    const setHidden = (v) => Object.defineProperty(document, 'hidden', { configurable: true, get: () => v });
+    setHidden(true); document.dispatchEvent(new Event('visibilitychange'));
+    const eatenHidden = document.querySelectorAll('.kd-eaten').length;
+    ok('切后台自动暂停且保留已读', KD.state.pace === false && eatenHidden === eatenBeforeHide && eatenHidden > 0, { pace: KD.state.pace, before: eatenBeforeHide, hidden: eatenHidden });
+    setHidden(false); document.dispatchEvent(new Event('visibilitychange'));
+    await wait(60);
+    ok('切回来续读且没有闪回全部还原', KD.state.pace === true && document.querySelectorAll('.kd-eaten').length > 0, { pace: KD.state.pace, eaten: document.querySelectorAll('.kd-eaten').length });
+    delete document.hidden;
+
+    // 切后台 -> 用户手动暂停 -> 切回来：不该被"自动续读"盖掉
+    setHidden(true); document.dispatchEvent(new Event('visibilitychange'));
+    K.stopPace();                                    // 用户的手动暂停（应作废自动续读）
+    setHidden(false); document.dispatchEvent(new Event('visibilitychange'));
+    await wait(80);
+    ok('后台期间的手动暂停不会被自动续读盖掉', KD.state.pace === false && document.querySelectorAll('.kd-eaten').length === 0, { pace: KD.state.pace, eaten: document.querySelectorAll('.kd-eaten').length });
+    delete document.hidden;
+
+    // ---------- 6. markPace 增量性能 ----------
+    const t0 = performance.now();
+    for (let i = 0; i < 300; i++) { KD.paceCharPos += 4; K.tickPace(); }
+    const dt = performance.now() - t0;
+    ok('300 帧标记 < 1500ms（增量而非全量）', dt < 1500, Math.round(dt) + 'ms');
+    K.stopPace();
+
+    // ---------- 7. AI 校准：成功 + 命中 ----------
+    // 注意：这里必须用**真实的响应形状**（OpenAI 信封，模型说的话在 choices[0].message.content 字符串里）。
+    // 早期用例直接返回裸 {"important":[...]}，把"扩展没拆信封"这个真 bug 完全掩盖掉了。
+    const env = (content) => JSON.stringify({
+      id: 'chatcmpl-test', object: 'chat.completion', model: 'Index-Translate-35B-A3B',
+      choices: [{ index: 0, message: { role: 'assistant', content: typeof content === 'string' ? content : JSON.stringify(content) }, finish_reason: 'stop' }],
+    });
+    let calls = 0;
+    llmReply = async () => { calls++; return { ok: true, status: 200, text: env({ important: ['威尼斯', '圣马克堂', '文艺复兴'] }) }; };
+    let r = await K.llmCalibrate({ force: true });
+    ok('AI 校准成功（真实 OpenAI 信封）', KD.llmState === 'ok' && r.ok === true, { state: KD.llmState, r });
+    ok('命中 token 有加成标记', KD.tokens.some(t => t._llm), KD.tokens.filter(t => t._llm).map(t => t.text).slice(0, 5));
+    ok('写入了本地缓存', !!K.getCachedLlm() && calls === 1, { calls });
+
+    // ---------- 7b. 响应体解析的各种真实形状 ----------
+    K.removeLlmBoost();
+    llmReply = async () => ({ ok: true, status: 200, text: env('好的，这是结果：{"important":["威尼斯","圣马克堂"]} 希望对你有用') });
+    r = await K.llmCalibrate({ force: true });
+    ok('模型带前后缀也能取到 JSON', r.ok === true && KD.llmStats.tokens > 0, r);
+
+    K.removeLlmBoost();
+    // content 是真正的数组（分片式返回）——手工构造信封，不能走 env() 的 JSON 字符串化
+    llmReply = async () => ({ ok: true, status: 200, text: JSON.stringify({ choices: [{ message: { content: [{ type: 'text', text: '{"important":["威尼斯"]}' }] } }] }) });
+    r = await K.llmCalibrate({ force: true });
+    ok('content 为数组（分片）也能解析', r.ok === true, r);
+
+    K.removeLlmBoost();
+    llmReply = async () => ({ ok: true, status: 200, text: JSON.stringify({ choices: [{ message: { content: '', reasoning_content: '{"important":["威尼斯"]}' } }] }) });
+    r = await K.llmCalibrate({ force: true });
+    ok('content 空但 reasoning_content 有内容时兜底', r.ok === true, r);
+
+    K.removeLlmBoost();
+    llmReply = async () => ({ ok: true, status: 200, text: JSON.stringify({ important: ['威尼斯'] }) });               // 裸 JSON（部分网关）
+    r = await K.llmCalibrate({ force: true });
+    ok('裸 JSON 响应（老网关）仍然兼容', r.ok === true, r);
+
+    K.removeLlmBoost();
+    llmReply = async () => ({ ok: true, status: 200, text: env({ hello: 'world' }) });                                 // 信封对但没 important
+    r = await K.llmCalibrate({ force: true });
+    ok('信封里没有 important 数组 → 可读报错（不是含糊的 empty）', KD.llmState === 'fail' && /important|format/.test(KD.llmError || ''), KD.llmError);
+
+    // ---------- 7c. 两条通道（页面直连 / 后台代理）都能用，且能互相兜底 ----------
+    // 真机上 B 站接口对 Origin: chrome-extension:// 直接 412，直连（Origin=站点）反而能通，
+    // 所以两条通道都得留着，谁先通用谁。
+    K.removeLlmBoost();
+    llmReply = async () => ({ ok: true, status: 200, text: env({ important: ['威尼斯'] }) });
+    const swBefore = LLMCALL.sw, fetchBefore = LLMCALL.fetch;
+    r = await K.llmCalibrate({ force: true });
+    ok('默认走页面直连通道（不发后台消息）', r.ok === true && LLMCALL.fetch > fetchBefore && LLMCALL.sw === swBefore, { fetch: LLMCALL.fetch - fetchBefore, sw: LLMCALL.sw - swBefore });
+
+    K.removeLlmBoost();
+    llmDirectMode = 'net';                                  // 直连被 CSP/跨域挡了
+    const swBefore2 = LLMCALL.sw;
+    r = await K.llmCalibrate({ force: true });
+    ok('直连失败时自动改走后台代理', r.ok === true && LLMCALL.sw > swBefore2, { sw: LLMCALL.sw - swBefore2, r });
+    llmDirectMode = 'ok';
+
+    K.removeLlmBoost();
+    llmDirectMode = '412';                                  // 接口拒绝当前来源（扩展 Origin）
+    const swBefore3 = LLMCALL.sw;
+    r = await K.llmCalibrate({ force: true });
+    ok('接口返回 412 时换通道重试', r.ok === true && LLMCALL.sw > swBefore3, { sw: LLMCALL.sw - swBefore3, r });
+    llmDirectMode = 'ok';
+
+    K.removeLlmBoost();
+    llmDirectMode = 'net';
+    llmReply = async () => ({ ok: false, status: 503, text: 'upstream down' });
+    r = await K.llmCalibrate({ force: true });
+    ok('两条通道都不通时给出可读错误', KD.llmState === 'fail' && /503|network/.test(KD.llmError || ''), KD.llmError);
+    llmDirectMode = 'ok';
+    llmReply = async () => ({ ok: true, status: 200, text: env({ important: ['威尼斯', '圣马克堂', '文艺复兴'] }) });
+
+    // ---------- 8. 重复短语不叠加 ----------
+    K.removeLlmBoost();
+    ok('关 AI 后回到基线（无 _llm 残留）', KD.llmState === 'off' && !KD.tokens.some(t => t._llm));
+    llmReply = async () => ({ ok: true, status: 200, text: env({ important: ['威尼斯'] }) });
+    await K.llmCalibrate({ force: true });
+    const hitsOnce = KD.llmStats && KD.llmStats.tokens;
+    K.removeLlmBoost();
+    llmReply = async () => ({ ok: true, status: 200, text: env({ important: ['威尼斯', '威尼斯', '威尼斯', '威尼斯'] }) });
+    await K.llmCalibrate({ force: true });
+    ok('重复短语去重后命中数不变', KD.llmStats && KD.llmStats.tokens === hitsOnce && KD.llmStats.phrases === 1, { dup: KD.llmStats && KD.llmStats.tokens, once: hitsOnce });
+
+    // ---------- 9. 缓存命中零请求 ----------
+    K.removeLlmBoost();
+    const callsBefore = calls;
+    r = await K.llmCalibrate();
+    ok('同页二次校准走缓存、无网络', r.cached === true && calls === callsBefore && KD.llmState === 'ok', { r, calls, callsBefore });
+
+    // ---------- 10. 在途请求被"关闭 AI"作废 ----------
+    K.removeLlmBoost();
+    let resolveInFlight = null;
+    llmReply = () => new Promise(res => { resolveInFlight = res; });
+    const pending = K.llmCalibrate({ force: true });
+    await wait(30);
+    ok('请求在途时状态为 running', KD.llmState === 'running', KD.llmState);
+    K.removeLlmBoost();                        // 用户此时关掉 AI
+    resolveInFlight({ ok: true, text: '{"important":["威尼斯"]}' });
+    r = await pending;
+    ok('关闭后迟到的结果不写回页面', r.reason === 'stale' && KD.llmState === 'off' && !KD.tokens.some(t => t._llm), { r, state: KD.llmState });
+
+    // ---------- 11. 隐私闸门（测试页在 127.0.0.1，默认闸门开着会直接跳过） ----------
+    msgListener({ type: 'kd-llm-cfg', cfg: { skipSensitive: true } }, null, () => {});
+    const pw = document.createElement('input'); pw.type = 'password'; document.body.appendChild(pw);
+    r = await K.llmCalibrate({ force: true });
+    ok('隐私闸门：含密码框的页面跳过上传', KD.llmState === 'skip' && /密码/.test(r.reason || ''), r);
+    pw.remove();
+    r = await K.llmCalibrate({ force: true });
+    ok('隐私闸门：本地/内网地址跳过上传', KD.llmState === 'skip' && /本地|内网/.test(r.reason || ''), r);
+    msgListener({ type: 'kd-llm-cfg', cfg: { skipSensitive: false } }, null, () => {});   // 退回测试模式
+
+    // ---------- 12. 失败重试有上限 ----------
+    K.removeLlmBoost();
+    let failCalls = 0;
+    llmReply = async () => { failCalls++; return { ok: false, status: 503, text: 'upstream down' }; };
+    const t1 = performance.now();
+    r = await K.llmCalibrate({ force: true });
+    const elapsed = performance.now() - t1;
+    ok('5xx 只重试一次（共 2 次请求）', failCalls === 2, { failCalls });
+    ok('失败有可读原因 + 状态 fail', KD.llmState === 'fail' && /503/.test(KD.llmError || ''), KD.llmError);
+    ok('重试有退避（>500ms）', elapsed > 500, Math.round(elapsed) + 'ms');
+
+    // ---------- 13. 关闭页面时作废在途校准 ----------
+    K.removeLlmBoost();
+    llmReply = () => new Promise(res => { resolveInFlight = res; });
+    const p2 = K.llmCalibrate({ force: true });
+    await wait(30);
+    K.disable();
+    resolveInFlight({ ok: true, text: '{"important":["威尼斯"]}' });
+    await p2;
+    await wait(30);
+    ok('关闭高亮后不会被 AI 结果重新写回 DOM', document.querySelectorAll('.kd-tok').length === 0 && !KD.state.enabled);
+
+    show();
+  } catch (e) {
+    R.fail++;
+    R.notes.push('ERROR: ' + e.message + '\n' + e.stack);
+    show();
+  }
+})();
+</script>
+<div id="results">running...</div>
+</body>
+</html>

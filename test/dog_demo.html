@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>啃读点书吗？ 跟读视觉预览</title>
+<link rel="stylesheet" href="../content/kendudian.css">
+<style>
+  body { margin: 0; background: #FBF7EF; color: #2E2A24; font: 18px/2 "Songti SC", "SimSun", serif; }
+  article { max-width: 720px; margin: 40px auto; padding: 0 24px; }
+  h1 { font-size: 28px; margin-bottom: 18px; }
+  p { margin: 0 0 18px; }
+</style>
+</head>
+<body>
+<article>
+  <h1>威尼斯的早晨</h1>
+  <p>圣马克方场是威尼斯最热闹的地方，方场上的钟楼在十一世纪的晨雾里显出轮廓。教堂的圆顶被朝阳照亮，金色马赛克反射出细碎的光，像撒了一层薄薄的铜屑。</p>
+  <p>十七世纪的商人在廊柱之间讨价还价，三百二十二级台阶通向钟楼顶端。站在上面俯瞰，整座水城像一块被海水切开的面包，运河在房屋之间蜿蜒，贡多拉的桨声一下一下地拍着石岸。</p>
+  <p>正午过后，潮水涨起来，广场低处漫上一层浅浅的水。孩子们脱了鞋在水里跑，鸽子落在灯柱上，教堂的钟声刚好敲了十二下。卖明信片的老妇人把摊子往台阶上挪了挪，嘴里念叨着今年潮水来得比往年早。</p>
+  <p>再往里走是窄得只容两人并肩的巷子，墙上爬满深绿色的藤，窗台上晒着刚洗好的白衬衫。巷子尽头忽然亮起来，一片开阔的水面出现在眼前，对岸的宫殿在午后的光里泛着淡淡的粉。</p>
+  <p>傍晚时分，人们回到方场散步。乐队在廊下奏起圆舞曲，咖啡杯碰撞的声音混在音乐里。天色一点点暗下去，钟楼的轮廓变成一张剪影，只有最顶上还留着一线余光。</p>
+</article>
+<script>
+window.chrome = {
+  runtime: { getURL: (p) => '../' + p, getManifest: () => ({ version: '1.0.0' }), onMessage: { addListener() {} }, sendMessage: async () => ({ ok: true }) },
+  storage: { local: { get: async () => ({}), set: async () => {} } },
+};
+</script>
+<script src="../content/kendudian.js"></script>
+<script>
+(async () => {
+  const K = window.__KD;
+  await K.enable();
+  K.startPace(true);
+  window.__DOG_READY = true;
+})();
+</script>
+</body>
+</html>

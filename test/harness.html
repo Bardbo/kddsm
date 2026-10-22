@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>啃读点书吗 v0.2 测试页（朱自清《威尼斯》视频可见片段）</title>
+<style>
+  body { max-width: 640px; margin: 24px auto; font-family: "Noto Serif SC", serif; line-height: 1.9; padding: 0 16px; }
+  #results { white-space: pre; font-family: Consolas, monospace; border: 2px solid #09c; background: #f5fbff; padding: 10px; margin-top: 16px; }
+</style>
+<link rel="stylesheet" href="../content/kendudian.css">
+</head>
+<body>
+<article id="article">
+  <h1>威尼斯（节选片段）</h1>
+  <p>威尼斯不单是明媚，在圣马克方场走走就知道。这两溜儿楼房的下一层，现在满开了铺子。运河去的是公爷；圣马克堂是广场的主人，建筑在十一世纪，原是卑赞廷式，以直线为主。十四世纪加上戈普式的装饰，如尖拱门等；十七世纪又参入文艺复兴期的装饰，如栏杆等。所以庄严华妙，兼而有之，这正是威尼斯人的漂亮劲儿。</p>
+  <p>教堂里屋顶与墙壁上满是碎玻璃嵌成的画，大概是真金色的地，蓝色和红色的圣灵像。这些像做得非常肃穆。教堂的地是用大理石铺的，颜色花样种种不同。在那种空阔阴暗的氛围中，你觉得伟丽，也觉得森严。教堂左右那两溜儿楼房，式样各别，并不对称；钟楼高三百二十二英尺，也偏在一面。</p>
+  <p>从圣马克方场沿河直向东去，有一处公园，从一五六五年起，就修好了。那里还没有好几条曲径，我们坐在路旁的椅子上谈天；或者是阿喀琉斯雕像只露出一个头，或者是夜灯摇曳着一片片绿影，都叫人不觉得时光的飞逝。威尼斯的夜曲是很著名的。夜曲本是一种抒情的曲子，夜晚在人家窗下随便唱。</p>
+</article>
+
+<script>
+// --- chrome API stub（http 测试环境） ---
+window.chrome = {
+  runtime: { onMessage: { addListener() {} }, getURL: (p) => '../' + p },
+  storage: { local: { async get() { return {}; }, async set() {} } },
+  tabs: { async query() { return [{ id: 1 }]; }, async sendMessage() {} }
+};
+</script>
+<script src="../content/kendudian.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  (async () => {
+    const r = {};
+    try {
+      await window.__KD.dictReady;
+      // 1) 自动开启（默认 true）
+      await new Promise(res => setTimeout(res, 800));
+      r.autoEnabled = window.__KD.KD.state.enabled;
+      // 2) 分词质量：关键专名应成单 token
+      r.tokens = window.__KD.KD.tokens.map(t => t.text);
+      r.hasVenice = r.tokens.includes('威尼斯');
+      r.hasMark = r.tokens.includes('圣马克堂');
+      r.hasJianEr = r.tokens.includes('兼而有之');
+      r.hasFuxing = r.tokens.includes('文艺复兴');
+      // 3) 层级统计
+      r.stats = { t1: document.querySelectorAll('.kd-hl-1').length, t2: document.querySelectorAll('.kd-hl-2').length, t3: document.querySelectorAll('.kd-hl-3').length };
+      r.tokTotal = document.querySelectorAll('.kd-tok').length;
+      r.stopwordInHl = [...document.querySelectorAll('.kd-hl-1,.kd-hl-2,.kd-hl-3')].filter(s => '的了是在我你他她们'.includes(s.textContent)).map(s => s.textContent);
+      r.t1Sample = [...document.querySelectorAll('.kd-hl-1')].slice(0, 8).map(s => s.textContent);
+      // 4) 跟读：非高亮词被移除、高亮词幸存且狗跳跃
+      const KD = window.__KD.KD;
+      window.__KD.startPace();
+      r.markerExists = !!document.querySelector('.kd-dog-wrap');
+      // 标点也应被移除：找第一个标点 token
+      const pIdx = KD.tokens.findIndex(t => t.func && /[，。、；：！？]/.test(t.text));
+      r.hasPunctToken = pIdx >= 0;
+      if (pIdx >= 0) {
+        KD.paceCharPos = KD.tokens[pIdx].end + 1;
+        window.__KD.tickPace();
+        r.punctEaten = KD.tokenSpans[pIdx][0].classList.contains('kd-eaten');
+      }
+      // 让进度走到第 5 个非高亮 token 之后
+      let idx5 = -1, cnt = 0;
+      for (let i = 0; i < KD.tokens.length; i++) { if (!KD.tokens[i].tier) { cnt++; if (cnt === 5) { idx5 = i; break; } } }
+      KD.paceCharPos = KD.tokens[idx5].end + 1;
+      window.__KD.tickPace();
+      const hl5 = KD.tokenSpans[idx5][0];
+      r.eatenNormal = hl5.classList.contains('kd-eaten');
+      // 高亮词幸存：找一个 tier>0 且在其后的 token
+      let hlIdx = -1;
+      for (let i = idx5 + 1; i < KD.tokens.length; i++) { if (KD.tokens[i].tier) { hlIdx = i; break; } }
+      const hlSpan = KD.tokenSpans[hlIdx][0];
+      const before = hlSpan.classList.contains('kd-eaten');
+      KD.paceCharPos = KD.tokens[hlIdx].start;
+      window.__KD.tickPace();
+      r.hlSurvives = before === false && !hlSpan.classList.contains('kd-eaten');
+      r.dogJumpOnHl = !!document.querySelector('.kd-dog.kd-jump');
+      r.dogSprite = document.querySelector('.kd-dog') ? document.querySelector('.kd-dog').style.backgroundImage.slice(0, 60) : null;
+      // 5) 读完：保持已移除状态、不自动恢复、finished=true
+      const eatenBefore = document.querySelectorAll('.kd-eaten').length;
+      KD.paceCharPos = KD.fullText.length + 1;
+      window.__KD.tickPace();
+      r.finished = KD.state.finished === true;
+      r.finishedKeepsEaten = document.querySelectorAll('.kd-eaten').length >= eatenBefore && eatenBefore > 0;
+      r.finishedAutoCleared = document.querySelectorAll('.kd-eaten').length === 0;
+      // 6) 速度调整不重置进度
+      const posBefore = KD.paceCharPos;
+      KD.cfg.speedCps = 8;
+      window.__KD.startPace();          // 已在跑（finished 后 state.pace=false，会重开——这里只测 tick 不重置）
+      r.speedApplied = KD.cfg.speedCps === 8;
+      window.__KD.stopPace();
+      r.theme = document.documentElement.dataset.kdTheme;
+      // 7) 模型增强：等 worker 加载 + 推理 + 融合（最长 25s）
+      r.model = { mode: null, applied: false, stats: null, t1SampleAfter: null, markTier: null, timingMs: 0 };
+      const t0 = Date.now();
+      await new Promise((resolve) => {
+        const check = () => {
+          if (KD.modelApplied) return resolve();
+          if (Date.now() - t0 > 25000) return resolve();
+          setTimeout(check, 500);
+        };
+        check();
+      });
+      r.model.timingMs = Date.now() - t0;
+      r.model.mode = KD.modelMode;
+      r.model.applied = KD.modelApplied;
+      r.model.stats = KD.modelStats;
+      if (KD.modelApplied) {
+        const markTok = KD.tokens.find(t => t.text === '圣马克堂');
+        r.model.markTier = markTok ? markTok.tier : null;
+        r.model.t1SampleAfter = [...document.querySelectorAll('.kd-hl-1')].slice(0, 8).map(s => s.textContent);
+      }
+      document.getElementById('results').textContent = JSON.stringify(r, null, 1);
+    } catch (e) {
+      document.getElementById('results').textContent = 'ERROR: ' + e.message + '\n' + e.stack;
+    }
+  })();
+});
+</script>
+<div id="results">running...</div>
+</body>
+</html>

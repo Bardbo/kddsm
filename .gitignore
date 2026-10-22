@@ -1,0 +1,14 @@
+# temp
+temp_body.json
+_metadata/
+*.pyc
+__pycache__/
+node_modules/
+.workbuddy/
+
+# 临时/抓取文件
+temp_body.json
+_metadata/
+test/_*
+test/demo_frames/
+演示视频.mp4.???

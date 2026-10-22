@@ -1,0 +1,110 @@
+/* 啃读点书吗？ 高亮与跟读样式 v0.9 — 暖琥珀单色系（亮/暗双主题）
+   约定：所有页内元素都加 !important —— 宿主站点的全局 div/span 样式会把我们的 UI 吃掉 */
+html[data-kd-theme="light"] {
+  --kd-t1-bg: rgba(255, 176, 0, .78);
+  --kd-t2-bg: rgba(255, 200, 80, .52);
+  --kd-t3-bg: rgba(255, 214, 130, .35);
+  --kd-cur-ring: #B07800;
+}
+html[data-kd-theme="dark"] {
+  --kd-t1-bg: rgba(255, 184, 0, 0.40);
+  --kd-t2-bg: rgba(255, 184, 0, 0.22);
+  --kd-t3-bg: rgba(255, 184, 0, 0.12);
+  --kd-cur-ring: #FFD166;
+}
+
+/* 所有 token 基底（跟读时统一加"已读"态） */
+.kd-tok { border-radius: 2px; }
+
+/* 高亮三层：全部色框（无下划线），深浅区分。背景色由 JS 按分数写 inline，这里只管字重/描边 */
+.kd-hl-1 { background: var(--kd-t1-bg); font-weight: 800; border-radius: 4px; box-shadow: 0 0 0 1px rgba(var(--kd-grad, 255, 176, 0), .55); }
+.kd-hl-2 { background: var(--kd-t2-bg); font-weight: 600; border-radius: 4px; }
+.kd-hl-3 { background: var(--kd-t3-bg); border-radius: 4px; }
+
+/* 跟读"已读"：默认淡出（设计文档 §4.4 要求不删除、可回退）。
+   注意不能用 visibility:hidden —— 那会吃掉过渡动画、也让屏幕阅读器整段消失；
+   默认只降透明度，文字位置和点击回看都保留。popup 可切"完全隐藏"（--kd-eaten-op: 0）。 */
+.kd-eaten {
+  opacity: var(--kd-eaten-op, 0.12) !important;
+  transition: opacity .28s ease !important;
+}
+/* 当前词 */
+.kd-cur { box-shadow: 0 0 0 2px var(--kd-cur-ring); animation: kd-pulse 1.2s ease-in-out infinite; }
+@keyframes kd-pulse { 0%,100% { box-shadow: 0 0 0 2px var(--kd-cur-ring); } 50% { box-shadow: 0 0 0 4px var(--kd-cur-ring); } }
+
+/* 页内提示条（读完 / 失败原因）：用 fixed + 高 z-index，避免被站点容器裁掉 */
+.kd-toast {
+  position: fixed !important;
+  left: 50% !important;
+  bottom: 28px !important;
+  transform: translateX(-50%) !important;
+  z-index: 2147483647 !important;
+  display: block !important;
+  width: auto !important;
+  max-width: 80vw !important;
+  margin: 0 !important;
+  padding: 10px 18px !important;
+  border: 1px solid rgba(176, 120, 0, .28) !important;
+  border-radius: 999px !important;
+  background: #FFF9EF !important;
+  color: #5A4418 !important;
+  font: 600 13px/1.5 system-ui, "PingFang SC", "Microsoft YaHei", sans-serif !important;
+  letter-spacing: .3px !important;
+  box-shadow: 0 6px 22px rgba(60, 40, 0, .18) !important;
+  animation: kd-toast-in .22s ease-out !important;
+}
+.kd-toast.kd-toast-action { cursor: pointer !important; pointer-events: auto !important; }
+.kd-toast.kd-toast-action:hover { background: #FFEFD0 !important; }
+@keyframes kd-toast-in { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+/* 狗狗：外层定位（奔跑位移），内层 = 品种奔跑动画（帧数由 --kd-frames 决定，各品种 4–6 帧不等） */
+.kd-dog-wrap {
+  position: fixed !important; left: 0 !important; top: 0 !important; z-index: 2147483646 !important;
+  width: 64px !important; height: 64px !important;
+  margin: 0 !important; padding: 0 !important;
+  transform: translate(-9999px, -9999px);
+  /* 注意：绝不能加 transform transition——tickPace 每 100ms 更新 transform，
+     过渡会被不断重启，computed 值永远滞留在初始值附近 → 狗渲染在屏幕外（"狗不出来"） */
+  pointer-events: none !important; display: none;
+  --kd-frames: 6;
+}
+/* 地面投影：让狗"踩"在文字行上，而不是飘着 */
+.kd-dog-wrap::after {
+  content: '' !important;
+  position: absolute !important; left: 8px !important; right: 8px !important; bottom: -1px !important;
+  height: 7px !important; border-radius: 50% !important;
+  background: radial-gradient(50% 50% at 50% 50%, rgba(40, 25, 0, .22), rgba(40, 25, 0, 0) 72%) !important;
+  pointer-events: none !important; z-index: -1 !important;   /* 画在狗的下面，不糊在爪子上 */
+}
+.kd-dog {
+  width: 64px !important; height: 64px !important;
+  margin: 0 !important;
+  background-repeat: no-repeat !important;
+  background-size: calc(var(--kd-frames, 6) * 64px) 64px !important;
+  background-position: 0 0;
+  animation: kd-run .55s steps(var(--kd-frames, 6)) infinite;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .18));
+  will-change: background-position;
+}
+@keyframes kd-run {
+  from { background-position: 0 0; }
+  to { background-position: calc(var(--kd-frames, 6) * -64px) 0; }
+}
+/* 跳跃：跨过高亮词（同款帧循环 + 弧线位移，稍快一点显得有劲） */
+.kd-dog.kd-jump {
+  animation: kd-run .38s steps(var(--kd-frames, 6)) infinite, kd-jump-arc .45s ease-out;
+}
+@keyframes kd-jump-arc {
+  0%   { transform: translateY(0) rotate(0deg); }
+  35%  { transform: translateY(-34px) rotate(-4deg); }
+  70%  { transform: translateY(-8px) rotate(1deg); }
+  100% { transform: translateY(0) rotate(0deg); }
+}
+
+/* 无障碍 / 省电：关掉脉冲与奔跑逐帧（狗仍随词移动，位置反馈不丢） */
+@media (prefers-reduced-motion: reduce) {
+  .kd-cur { animation: none !important; }
+  .kd-dog, .kd-dog.kd-jump { animation: none !important; }
+  .kd-toast { animation: none !important; }
+  .kd-eaten { transition: none !important; }
+}
